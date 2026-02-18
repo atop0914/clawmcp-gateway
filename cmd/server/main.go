@@ -15,10 +15,17 @@ import (
 )
 
 func main() {
-	// 加载配置
+	// 加载配置 - 默认使用 configs/config.yaml
 	configPath := os.Getenv("CLAWMCP_CONFIG")
 	if configPath == "" {
-		configPath = "./config.yaml"
+		// 优先使用当前目录的 configs/config.yaml
+		if _, err := os.Stat("./configs/config.yaml"); err == nil {
+			configPath = "./configs/config.yaml"
+		} else if _, err := os.Stat("./config.yaml"); err == nil {
+			configPath = "./config.yaml"
+		} else {
+			configPath = "./configs/config.yaml"
+		}
 	}
 
 	cfg, err := config.Load(configPath)
