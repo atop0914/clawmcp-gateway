@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,33 @@ import (
 	"clawmcp-gateway/internal/handler"
 )
 
+// loadEnvFile 加载环境变量文件
+func loadEnvFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		os.Setenv(key, value)
+	}
+	return nil
+}
+
 func main() {
+	// 预先加载 .env 文件
+	loadEnvFile("./configs/.env")
+	loadEnvFile("./.env")
 	// 加载配置 - 默认使用 configs/config.yaml
 	configPath := os.Getenv("CLAWMCP_CONFIG")
 	if configPath == "" {

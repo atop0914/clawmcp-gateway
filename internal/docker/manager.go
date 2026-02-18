@@ -97,8 +97,11 @@ func (m *Manager) StartService(ctx context.Context, svcName string) error {
 	env := os.Environ()
 	for _, e := range svc.Env {
 		value := e.Value
-		if e.ValueFrom != "" && strings.HasPrefix(e.ValueFrom, "env:") {
-			value = os.Getenv(strings.TrimPrefix(e.ValueFrom, "env:"))
+		// 优先使用配置文件中的 value
+		if value == "" && e.ValueFrom != "" {
+			if strings.HasPrefix(e.ValueFrom, "env:") {
+				value = os.Getenv(strings.TrimPrefix(e.ValueFrom, "env:"))
+			}
 		}
 		if value != "" {
 			env = append(env, fmt.Sprintf("%s=%s", e.Name, value))

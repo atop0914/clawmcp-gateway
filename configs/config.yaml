@@ -2,11 +2,15 @@
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 18080
 
 web:
   enable: true
   title: "ClawMCP Gateway"
+
+# 加载环境变量文件
+envFiles:
+  - "./configs/.env"
 
 docker:
   network: "clawmcp-network"
