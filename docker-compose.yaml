@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clawmcp/gateway:latest
+    container_name: clawmcp-gateway
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - ./configs/config.yaml:/app/config.yaml:ro
+      - ./configs/.env:/app/.env:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CLAWMCP_CONFIG=/app/config.yaml
+    env_file:
+      - ./configs/.env
+    restart: unless-stopped
+    networks:
+      - clawmcp-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  clawmcp-network:
+    driver: bridge
+    name: clawmcp-network
