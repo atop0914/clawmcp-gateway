@@ -1,19 +1,13 @@
 # ClawMCP Gateway 配置
 
-# Gateway HTTP 服务配置
-gateway:
-  host: "0.0.0.0"
-  port: 8080
-
-# MCP 服务配置
 mcp:
   enabled:
-    # MiniMax 网络搜索 (推荐)
-    - name: minimax-search
-      displayName: "MiniMax 搜索"
-      description: "基于 MiniMax AI 的网络搜索服务"
-      command: "/tmp/mcp-venv/bin/python"
-      args: ["-m", "minimax_mcp.server"]
+    # MiniMax 网络搜索 + 图像理解
+    - name: minimax
+      displayName: "MiniMax MCP"
+      description: "基于 MiniMax AI 的网络搜索和图像理解服务"
+      command: "uvx"
+      args: ["minimax-coding-plan-mcp", "-y"]
       env:
         - name: MINIMAX_API_KEY
           value: "sk-cp-fdYdjiaTwCC1HDP6DOezXoCJkoilqUsm7LjAFJBE2AAsblLolsc_YWkrRiyCn-hUFzGt5BPB9Hg_QgBKgu3uJgW_gj7itveRRTeisI3dX8elHhhtSnUjbTY"
@@ -23,71 +17,3 @@ mcp:
           value: "/tmp/minimax-mcp"
       port: 3001
       enabled: true
-
-    # MiniMax 图像理解
-    - name: minimax-image
-      displayName: "MiniMax 图像理解"
-      description: "基于 MiniMax AI 的图像理解服务"
-      command: "python3"
-      args: ["-m", "minimax_mcp.server"]
-      env:
-        - name: MINIMAX_API_KEY
-          valueFrom: env:MINIMAX_API_KEY
-        - name: MINIMAX_API_HOST
-          value: "https://api.minimaxi.com"
-      port: 3002
-      enabled: false
-
-    # Tavily AI 搜索
-    - name: tavily-search
-      displayName: "Tavily AI 搜索"
-      description: "AI 优化的搜索服务，需要 TAVILY_API_KEY"
-      command: "uvx"
-      args: ["tavily-mcp", "-y"]
-      env:
-        - name: TAVILY_API_KEY
-          valueFrom: env:TAVILY_API_KEY
-      port: 3003
-      enabled: false
-
-    # Exa 神经搜索
-    - name: exa-search
-      displayName: "Exa 神经搜索"
-      description: "基于 AI 的神经搜索引擎，需要 EXA_API_KEY"
-      command: "uvx"
-      args: ["exa-search-mcp", "-y"]
-      env:
-        - name: EXA_API_KEY
-          valueFrom: env:EXA_API_KEY
-      port: 3004
-      enabled: false
-
-    # GitHub
-    - name: github
-      displayName: "GitHub"
-      description: "GitHub API 集成，需要 GITHUB_TOKEN"
-      command: "uvx"
-      args: ["github-mcp-server", "-y"]
-      env:
-        - name: GITHUB_TOKEN
-          valueFrom: env:GITHUB_TOKEN
-      port: 3006
-      enabled: false
-
-    # Puppeteer 浏览器
-    - name: puppeteer
-      displayName: "浏览器自动化"
-      description: "Puppeteer 浏览器控制"
-      command: "uvx"
-      args: ["@modelcontextprotocol/server-puppeteer", "-y"]
-      port: 3007
-      enabled: false
-
-    # 文件系统
-    - name: filesystem
-      displayName: "文件系统"
-      description: "本地文件系统访问"
-      command: "uvx"
-      args: ["@modelcontextprotocol/server-filesystem", "/tmp", "-y"]
-      port: 3008
-      enabled: false
