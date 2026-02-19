@@ -11,12 +11,12 @@ mcp:
     # MiniMax 网络搜索 (推荐)
     - name: minimax-search
       displayName: "MiniMax 搜索"
-      description: "基于 MiniMax AI 的网络搜索服务，支持中英文搜索"
-      command: "python3"
+      description: "基于 MiniMax AI 的网络搜索服务"
+      command: "/tmp/mcp-venv/bin/python"
       args: ["-m", "minimax_mcp.server"]
       env:
         - name: MINIMAX_API_KEY
-          valueFrom: env:MINIMAX_API_KEY
+          value: "sk-cp-fdYdjiaTwCC1HDP6DOezXoCJkoilqUsm7LjAFJBE2AAsblLolsc_YWkrRiyCn-hUFzGt5BPB9Hg_QgBKgu3uJgW_gj7itveRRTeisI3dX8elHhhtSnUjbTY"
         - name: MINIMAX_API_HOST
           value: "https://api.minimaxi.com"
         - name: MINIMAX_MCP_BASE_PATH
