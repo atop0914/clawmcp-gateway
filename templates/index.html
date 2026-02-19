@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawMCP Gateway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-network-wired"></i> ClawMCP Gateway</h1>
+            <p>MCP 服务管理平台</p>
+        </header>
+
+        <div class="toolbar">
+            <div class="stats">
+                <span><i class="fas fa-server"></i> 已配置 <strong id="totalCount">0</strong> 个服务</span>
+            </div>
+            <button onclick="loadServices()" class="btn btn-primary">
+                <i class="fas fa-sync-alt"></i> 刷新
+            </button>
+        </div>
+
+        <div id="services" class="services-grid"></div>
+        
+        <div id="console" class="console">
+            <div class="console-header">
+                <span><i class="fas fa-terminal"></i> 控制台</span>
+                <button onclick="clearConsole()" class="btn-small">清空</button>
+            </div>
+            <div id="consoleOutput" class="console-output"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
