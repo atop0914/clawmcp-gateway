@@ -2,9 +2,8 @@
 
 mcp:
   enabled:
-    # ===== 官方 MCP =====
+    # ===== 官方/已测试 =====
     
-    # MiniMax 网络搜索 + 图像理解
     - name: minimax
       displayName: "MiniMax MCP"
       description: "基于 MiniMax AI 的网络搜索和图像理解服务"
@@ -20,21 +19,86 @@ mcp:
       port: 3001
       enabled: true
 
-    # ===== 社区 MCP (需安装) =====
-    
-    # Puppeteer 浏览器自动化
+    # ===== 热门社区 MCP =====
+
+    # Sequential Thinking - 思维链推理 (热门！)
+    - name: sequential-thinking
+      displayName: "思维推理"
+      description: "动态思考和反思性问题解决工具"
+      command: "uvx"
+      args: ["@smithery-ai/server-sequential-thinking", "-y"]
+      port: 3002
+      enabled: false
+
+    # Neo4j - 图数据库
+    - name: neo4j
+      displayName: "Neo4j 图数据库"
+      description: "知识图谱和图数据库查询"
+      command: "uvx"
+      args: ["mcp-neo4j", "-y"]
+      env:
+        - name: NEO4J_URI
+          value: "neo4j://localhost:7687"
+        - name: NEO4J_USERNAME
+          value: "neo4j"
+        - name: NEO4J_PASSWORD
+          value: "password"
+      port: 3003
+      enabled: false
+
+    # Supabase - 数据库 + Auth + Edge Functions
+    - name: supabase
+      displayName: "Supabase"
+      description: "PostgreSQL、Auth、Edge Functions"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-supabase", "-y"]
+      env:
+        - name: SUPABASE_URL
+          value: "https://xxx.supabase.co"
+        - name: SUPABASE_ANON_KEY
+          value: "your-anon-key"
+      port: 3004
+      enabled: false
+
+    # Qdrant - 向量搜索
+    - name: qdrant
+      displayName: "Qdrant 向量搜索"
+      description: "语义搜索和向量数据库"
+      command: "uvx"
+      args: ["qdrant-mcp-server", "-y"]
+      env:
+        - name: QDRANT_URL
+          value: "http://localhost:6333"
+        - name: QDRANT_API_KEY
+          value: "your-api-key"
+      port: 3005
+      enabled: false
+
+    # Neon - Serverless PostgreSQL
+    - name: neon
+      displayName: "Neon 数据库"
+      description: "Serverless Postgres 数据库"
+      command: "uvx"
+      args: ["@neondatabase/mcp-server-neon", "-y"]
+      env:
+        - name: NEON_DATABASE_URL
+          value: "postgres://user:pass@ep-xxx.us-east-1.aws.neon.tech/db"
+      port: 3006
+      enabled: false
+
+    # Puppeteer - 浏览器自动化
     - name: puppeteer
       displayName: "浏览器自动化"
-      description: "用 AI 控制浏览器自动化操作（截图、点击、填表等）"
+      description: "AI 控制浏览器（截图、填表、点击）"
       command: "uvx"
       args: ["@modelcontextprotocol/server-puppeteer", "-y"]
       port: 3007
       enabled: false
 
-    # 文件系统
+    # Filesystem - 文件系统
     - name: filesystem
       displayName: "文件系统"
-      description: "本地文件系统读写访问"
+      description: "本地文件读写"
       command: "uvx"
       args: ["@modelcontextprotocol/server-filesystem", "/tmp", "-y"]
       port: 3008
@@ -43,7 +107,7 @@ mcp:
     # GitHub
     - name: github
       displayName: "GitHub"
-      description: "GitHub API 集成（PR、Issue、仓库等）"
+      description: "PR、Issue、仓库管理"
       command: "uvx"
       args: ["github-mcp-server", "-y"]
       env:
@@ -64,56 +128,68 @@ mcp:
       port: 3010
       enabled: false
 
+    # Redis
+    - name: redis
+      displayName: "Redis"
+      description: "缓存和键值存储"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-redis", "-y"]
+      env:
+        - name: REDIS_URL
+          value: "redis://localhost:6379"
+      port: 3011
+      enabled: false
+
     # SQLite
     - name: sqlite
       displayName: "SQLite"
-      description: "SQLite 数据库查询"
+      description: "轻量级数据库"
       command: "uvx"
       args: ["@modelcontextprotocol/server-sqlite", "/tmp/test.db", "-y"]
-      port: 3011
+      port: 3012
       enabled: false
 
     # Brave Search
     - name: brave-search
       displayName: "Brave 搜索"
-      description: "Brave Search API 网络搜索"
+      description: "网络搜索"
       command: "uvx"
       args: ["@modelcontextprotocol/server-brave-search", "-y"]
       env:
         - name: BRAVE_API_KEY
           valueFrom: env:BRAVE_API_KEY
-      port: 3012
+      port: 3013
       enabled: false
 
     # Slack
     - name: slack
       displayName: "Slack"
-      description: "Slack 消息和频道管理"
+      description: "消息和频道"
       command: "uvx"
       args: ["@modelcontextprotocol/server-slack", "-y"]
       env:
         - name: SLACK_BOT_TOKEN
           valueFrom: env:SLACK_BOT_TOKEN
-      port: 3013
+      port: 3014
       enabled: false
 
     # Google Maps
     - name: google-maps
       displayName: "Google Maps"
-      description: "地图、距离、地点搜索"
+      description: "地图、地点、距离"
       command: "uvx"
       args: ["@modelcontextprotocol/server-google-maps", "-y"]
       env:
         - name: GOOGLE_MAPS_API_KEY
           valueFrom: env:GOOGLE_MAPS_API_KEY
-      port: 3014
+      port: 3015
       enabled: false
 
-    # Memory 记忆服务
+    # Memory - 长期记忆
     - name: memory
       displayName: "记忆服务"
-      description: "长期记忆存储，AI 上下文保持"
+      description: "AI 上下文记忆保持"
       command: "uvx"
       args: ["@modelcontextprotocol/server-memory", "-y"]
-      port: 3015
+      port: 3016
       enabled: false
