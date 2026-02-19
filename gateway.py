@@ -1,23 +1,21 @@
 """
 ClawMCP Gateway - 后端 API
-MCP 服务管理平台 - 反向代理架构
+MCP 服务管理平台 - 反向代理架构 + 工具注册
 
 架构说明:
 - Gateway: 唯一对外入口 (127.0.0.1:PORT)
-- MCP Services: 仅监听内部端口 (127.0.0.1:internal_port)
-- 外部只能通过 Gateway 访问，隐藏内部细节
-
-当前实现: HTTP 转发模式
+- MCP Services: 仅监听内部端口
+- 工具注册: 预定义每个服务的工具，大模型可据此生成 SKILL.md
 """
 import os
 import json
 from contextlib import asynccontextmanager
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from dataclasses import dataclass
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response, JSONResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import yaml
@@ -32,6 +30,141 @@ PORT = int(os.getenv("CLAWMCP_PORT", "8080"))
 INTERNAL_HOST = "127.0.0.1"
 
 
+# ==================== 工具注册表 ====================
+
+TOOL_REGISTRY = {
+    "minimax-search": {
+        "name": "MiniMax 搜索",
+        "description": "基于 MiniMax AI 的网络搜索服务",
+        "tools": [
+            {
+                "name": "web_search",
+                "description": "搜索互联网获取最新信息",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "搜索关键词"}
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "understand_image",
+                "description": "分析图片内容",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "image": {"type": "string", "description": "图片URL或base64"},
+                        "question": {"type": "string", "description": "关于图片的问题"}
+                    },
+                    "required": ["image"]
+                }
+            }
+        ]
+    },
+    "tavily-search": {
+        "name": "Tavily AI 搜索",
+        "description": "AI 优化的搜索服务",
+        "tools": [
+            {
+                "name": "tavily_search",
+                "description": "Tavily 深度搜索",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "搜索查询"},
+                        "max_results": {"type": "integer", "description": "最大结果数"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    },
+    "exa-search": {
+        "name": "Exa 神经搜索",
+        "description": "基于 AI 的神经搜索引擎",
+        "tools": [
+            {
+                "name": "exa_search",
+                "description": "Exa 神经搜索",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "搜索查询"},
+                        "num_results": {"type": "integer", "description": "结果数量"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    },
+    "github": {
+        "name": "GitHub",
+        "description": "GitHub API 集成",
+        "tools": [
+            {
+                "name": "get_pull_requests",
+                "description": "获取 Pull Request 列表"
+            },
+            {
+                "name": "search_repositories",
+                "description": "搜索代码仓库"
+            }
+        ]
+    },
+    "puppeteer": {
+        "name": "浏览器自动化",
+        "description": "Puppeteer 浏览器控制",
+        "tools": [
+            {
+                "name": "navigate",
+                "description": "导航到 URL",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "目标 URL"}
+                    },
+                    "required": ["url"]
+                }
+            },
+            {
+                "name": "screenshot",
+                "description": "截图"
+            }
+        ]
+    },
+    "filesystem": {
+        "name": "文件系统",
+        "description": "本地文件系统访问",
+        "tools": [
+            {
+                "name": "read_file",
+                "description": "读取文件",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "文件路径"}
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "write_file",
+                "description": "写入文件",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "文件路径"},
+                        "content": {"type": "string", "description": "文件内容"}
+                    },
+                    "required": ["path", "content"]
+                }
+            }
+        ]
+    }
+}
+
+
 # ==================== 数据模型 ====================
 
 @dataclass
@@ -39,21 +172,17 @@ class MCPService:
     name: str
     display_name: str
     description: str
-    http_port: int  # 内部 HTTP 端口
+    http_port: int
     enabled: bool
 
 
 # ==================== MCP 服务管理器 ====================
 
 class MCPManager:
-    """MCP 服务管理器 - 通过 HTTP 转发"""
-    
     def __init__(self):
         self.services: Dict[str, MCPService] = {}
-        self.http_clients: Dict[str, httpx.AsyncClient] = {}
     
     def load_config(self, path: str) -> None:
-        """加载服务配置"""
         if not os.path.exists(path):
             return
         
@@ -71,7 +200,6 @@ class MCPManager:
                 )
     
     async def check_service(self, name: str) -> bool:
-        """检查服务是否可访问"""
         if name not in self.services:
             return False
         
@@ -84,13 +212,11 @@ class MCPManager:
             return False
     
     async def call_tool(self, name: str, tool: str, arguments: dict) -> dict:
-        """调用 MCP 工具 - HTTP 转发"""
         if name not in self.services:
             raise HTTPException(status_code=404, detail=f"Service {name} not found")
         
         svc = self.services[name]
         
-        # 转发到内部 MCP 服务
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
@@ -100,7 +226,6 @@ class MCPManager:
                 
                 if resp.status_code == 200:
                     data = resp.json()
-                    # 解析 MCP 响应
                     if "result" in data:
                         return data["result"]
                     elif "error" in data:
@@ -113,16 +238,62 @@ class MCPManager:
         except httpx.ConnectError:
             raise HTTPException(status_code=400, detail=f"Service {name} not running")
     
-    def get_status(self, name: str) -> str:
-        """获取服务状态"""
-        if name not in self.services:
-            return "unknown"
-        return "running"  # 状态由外部 MCP 服务管理
+    def get_tools(self, name: str) -> Optional[List[dict]]:
+        """获取服务工具列表"""
+        return TOOL_REGISTRY.get(name, {}).get("tools")
     
-    async def shutdown(self):
-        """关闭"""
-        for client in self.http_clients.values():
-            await client.aclose()
+    def get_all_tools(self) -> Dict[str, List[dict]]:
+        """获取所有服务的工具"""
+        result = {}
+        for name in self.services:
+            tools = self.get_tools(name)
+            if tools:
+                result[name] = tools
+        return result
+    
+    def generate_skill(self, name: str) -> Optional[str]:
+        """生成 OpenClaw SKILL.md"""
+        if name not in TOOL_REGISTRY:
+            return None
+        
+        reg = TOOL_REGISTRY[name]
+        tools = reg.get("tools", [])
+        
+        lines = [
+            f"# {reg['name']}",
+            "",
+            f"_{reg['description']}_",
+            "",
+            "## 工具",
+            ""
+        ]
+        
+        for tool in tools:
+            input_schema = tool.get("inputSchema", {})
+            properties = input_schema.get("properties", {})
+            required = input_schema.get("required", [])
+            
+            lines.append(f"### {tool['name']}")
+            lines.append("")
+            lines.append(f"_{tool['description']}_")
+            lines.append("")
+            lines.append("**参数:**")
+            
+            if properties:
+                for prop_name, prop_info in properties.items():
+                    required_mark = " (必填)" if prop_name in required else ""
+                    prop_type = prop_info.get("type", "any")
+                    prop_desc = prop_info.get("description", "")
+                    lines.append(f"- `{prop_name}` ({prop_type}){required_mark}: {prop_desc}")
+            else:
+                lines.append("无参数")
+            
+            lines.append("")
+        
+        lines.append("---")
+        lines.append(f"*由 ClawMCP Gateway 自动生成*")
+        
+        return "\n".join(lines)
 
 
 # ==================== FastAPI 应用 ====================
@@ -134,12 +305,11 @@ mcp_manager = MCPManager()
 async def lifespan(app: FastAPI):
     mcp_manager.load_config(CONFIG_PATH)
     yield
-    await mcp_manager.shutdown()
 
 
 app = FastAPI(
     title="ClawMCP Gateway",
-    description="MCP 服务管理平台 - 统一入口",
+    description="MCP 服务管理平台 + 工具注册",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -152,7 +322,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静态文件
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
@@ -160,7 +329,6 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 
 @app.get("/health")
 async def health():
-    """健康检查"""
     return {
         "status": "healthy",
         "gateway_version": "1.0.0",
@@ -173,17 +341,16 @@ async def health():
 
 @app.get("/api/v1/services")
 async def list_services():
-    """获取所有服务列表（隐藏内部端口细节）"""
     result = []
     for name, svc in mcp_manager.services.items():
-        # 检查服务是否可达
         is_running = await mcp_manager.check_service(name)
         
         result.append({
             "name": svc.name,
             "displayName": svc.display_name,
             "description": svc.description,
-            "status": "running" if is_running else "stopped"
+            "status": "running" if is_running else "stopped",
+            "has_tools": name in TOOL_REGISTRY
         })
     
     return {"success": True, "data": result}
@@ -191,7 +358,6 @@ async def list_services():
 
 @app.get("/api/v1/services/{name}")
 async def get_service(name: str):
-    """获取单个服务信息"""
     if name not in mcp_manager.services:
         raise HTTPException(status_code=404, detail=f"Service {name} not found")
     
@@ -211,28 +377,23 @@ async def get_service(name: str):
 
 @app.post("/api/v1/services/{name}/start")
 async def start_service(name: str):
-    """启动服务 - 托管外部 MCP 服务（待实现）"""
     if name not in mcp_manager.services:
         raise HTTPException(status_code=404, detail=f"Service {name} not found")
     
-    # 当前版本：假设外部 MCP 服务已启动
-    # 后续可以实现服务生命周期管理
     is_running = await mcp_manager.check_service(name)
     if is_running:
         return {"success": True, "message": f"service {name} is already running"}
     
-    return {"success": False, "message": f"service {name} not running. Please start MCP server first."}
+    return {"success": False, "message": f"service {name} not running"}
 
 
 @app.post("/api/v1/services/{name}/stop")
 async def stop_service(name: str):
-    """停止服务 - 托管外部 MCP 服务（待实现）"""
-    return {"success": False, "message": "Service management not implemented yet"}
+    return {"success": False, "message": "Not implemented"}
 
 
 @app.post("/api/v1/services/{name}/call")
 async def call_tool(name: str, request: Request):
-    """调用工具 - 核心转发功能"""
     if name not in mcp_manager.services:
         raise HTTPException(status_code=404, detail=f"Service {name} not found")
     
@@ -245,6 +406,36 @@ async def call_tool(name: str, request: Request):
     
     result = await mcp_manager.call_tool(name, tool, arguments)
     return {"success": True, "data": result}
+
+
+# ==================== 工具 API ====================
+
+@app.get("/api/v1/tools")
+async def list_all_tools():
+    """获取所有服务的工具列表"""
+    return {"success": True, "data": mcp_manager.get_all_tools()}
+
+
+@app.get("/api/v1/services/{name}/tools")
+async def list_service_tools(name: str):
+    """获取单个服务的工具列表"""
+    tools = mcp_manager.get_tools(name)
+    
+    if tools is None:
+        raise HTTPException(status_code=404, detail=f"Service {name} not found or no tools")
+    
+    return {"success": True, "data": tools}
+
+
+@app.get("/api/v1/services/{name}/skill")
+async def get_service_skill(name: str):
+    """获取服务的 SKILL.md（供大模型使用）"""
+    skill = mcp_manager.generate_skill(name)
+    
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    
+    return PlainTextResponse(skill)
 
 
 # ==================== 前端页面 ====================
