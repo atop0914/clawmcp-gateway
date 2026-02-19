@@ -1,29 +1,19 @@
-# ClawMCP Gateway 配置文件
+# ClawMCP Gateway 配置
 
-server:
+# Gateway HTTP 服务配置
+gateway:
   host: "0.0.0.0"
-  port: 18080
+  port: 8080
 
-web:
-  enable: true
-  title: "ClawMCP Gateway"
-
-# 加载环境变量文件
-envFiles:
-  - "./configs/.env"
-
-docker:
-  network: "clawmcp-network"
-  restartPolicy: "unless-stopped"
-
+# MCP 服务配置
 mcp:
   enabled:
-    # MiniMax 网络搜索 (推荐! 必须配置 MINIMAX_API_KEY)
+    # MiniMax 网络搜索 (推荐)
     - name: minimax-search
       displayName: "MiniMax 搜索"
-      description: "基于 MiniMax AI 的网络搜索服务，支持中英文搜索。必须配置 MINIMAX_API_KEY!"
-      command: "/tmp/mcp-venv/bin/python"
-      args: ["/home/zhuyitao/.openclaw/workspace/projects/clawmcp-gateway/scripts/mcp-http-bridge.py", "3001"]
+      description: "基于 MiniMax AI 的网络搜索服务，支持中英文搜索"
+      command: "python3"
+      args: ["-m", "minimax_mcp.server"]
       env:
         - name: MINIMAX_API_KEY
           valueFrom: env:MINIMAX_API_KEY
@@ -37,14 +27,14 @@ mcp:
     # MiniMax 图像理解
     - name: minimax-image
       displayName: "MiniMax 图像理解"
-      description: "基于 MiniMax AI 的图像理解服务，可以分析图片内容"
-      command: "uvx"
-      args: ["minimax-coding-plan-mcp", "-y"]
+      description: "基于 MiniMax AI 的图像理解服务"
+      command: "python3"
+      args: ["-m", "minimax_mcp.server"]
       env:
         - name: MINIMAX_API_KEY
           valueFrom: env:MINIMAX_API_KEY
         - name: MINIMAX_API_HOST
-          value: "https://api.minimax.io"
+          value: "https://api.minimaxi.com"
       port: 3002
       enabled: false
 
@@ -70,18 +60,6 @@ mcp:
         - name: EXA_API_KEY
           valueFrom: env:EXA_API_KEY
       port: 3004
-      enabled: false
-
-    # Brave Search
-    - name: brave-search
-      displayName: "Brave 搜索"
-      description: "Brave Search API，需要 BRAVE_API_KEY"
-      command: "uvx"
-      args: ["brave-search-mcp", "-y"]
-      env:
-        - name: BRAVE_API_KEY
-          valueFrom: env:BRAVE_API_KEY
-      port: 3005
       enabled: false
 
     # GitHub
@@ -112,37 +90,4 @@ mcp:
       command: "uvx"
       args: ["@modelcontextprotocol/server-filesystem", "/tmp", "-y"]
       port: 3008
-      enabled: false
-
-    # PostgreSQL
-    - name: postgres
-      displayName: "PostgreSQL"
-      description: "PostgreSQL 数据库查询，需要 POSTGRES_URL"
-      command: "uvx"
-      args: ["@modelcontextprotocol/server-postgres", "-y"]
-      env:
-        - name: DATABASE_URL
-          valueFrom: env:POSTGRES_URL
-      port: 3009
-      enabled: false
-
-    # SQLite
-    - name: sqlite
-      displayName: "SQLite"
-      description: "SQLite 数据库查询"
-      command: "uvx"
-      args: ["@modelcontextprotocol/server-sqlite", "-y"]
-      env:
-        - name: DB_PATH
-          value: "/tmp/test.db"
-      port: 3010
-      enabled: false
-
-    # Memory 记忆服务
-    - name: memory
-      displayName: "记忆服务"
-      description: "长期记忆存储，用于 AI Agent 的上下文记忆"
-      command: "uvx"
-      args: ["memory-mcp", "-y"]
-      port: 3011
       enabled: false
