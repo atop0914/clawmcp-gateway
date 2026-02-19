@@ -2,6 +2,8 @@
 
 mcp:
   enabled:
+    # ===== 官方 MCP =====
+    
     # MiniMax 网络搜索 + 图像理解
     - name: minimax
       displayName: "MiniMax MCP"
@@ -17,3 +19,101 @@ mcp:
           value: "/tmp/minimax-mcp"
       port: 3001
       enabled: true
+
+    # ===== 社区 MCP (需安装) =====
+    
+    # Puppeteer 浏览器自动化
+    - name: puppeteer
+      displayName: "浏览器自动化"
+      description: "用 AI 控制浏览器自动化操作（截图、点击、填表等）"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-puppeteer", "-y"]
+      port: 3007
+      enabled: false
+
+    # 文件系统
+    - name: filesystem
+      displayName: "文件系统"
+      description: "本地文件系统读写访问"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-filesystem", "/tmp", "-y"]
+      port: 3008
+      enabled: false
+
+    # GitHub
+    - name: github
+      displayName: "GitHub"
+      description: "GitHub API 集成（PR、Issue、仓库等）"
+      command: "uvx"
+      args: ["github-mcp-server", "-y"]
+      env:
+        - name: GITHUB_TOKEN
+          valueFrom: env:GITHUB_TOKEN
+      port: 3009
+      enabled: false
+
+    # PostgreSQL
+    - name: postgres
+      displayName: "PostgreSQL"
+      description: "PostgreSQL 数据库查询"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-postgres", "-y"]
+      env:
+        - name: DATABASE_URL
+          value: "postgres://user:pass@localhost:5432/db"
+      port: 3010
+      enabled: false
+
+    # SQLite
+    - name: sqlite
+      displayName: "SQLite"
+      description: "SQLite 数据库查询"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-sqlite", "/tmp/test.db", "-y"]
+      port: 3011
+      enabled: false
+
+    # Brave Search
+    - name: brave-search
+      displayName: "Brave 搜索"
+      description: "Brave Search API 网络搜索"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-brave-search", "-y"]
+      env:
+        - name: BRAVE_API_KEY
+          valueFrom: env:BRAVE_API_KEY
+      port: 3012
+      enabled: false
+
+    # Slack
+    - name: slack
+      displayName: "Slack"
+      description: "Slack 消息和频道管理"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-slack", "-y"]
+      env:
+        - name: SLACK_BOT_TOKEN
+          valueFrom: env:SLACK_BOT_TOKEN
+      port: 3013
+      enabled: false
+
+    # Google Maps
+    - name: google-maps
+      displayName: "Google Maps"
+      description: "地图、距离、地点搜索"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-google-maps", "-y"]
+      env:
+        - name: GOOGLE_MAPS_API_KEY
+          valueFrom: env:GOOGLE_MAPS_API_KEY
+      port: 3014
+      enabled: false
+
+    # Memory 记忆服务
+    - name: memory
+      displayName: "记忆服务"
+      description: "长期记忆存储，AI 上下文保持"
+      command: "uvx"
+      args: ["@modelcontextprotocol/server-memory", "-y"]
+      port: 3015
+      enabled: false
