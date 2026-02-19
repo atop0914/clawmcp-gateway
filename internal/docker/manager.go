@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"sync"
 	"time"
 
@@ -111,7 +112,7 @@ func (m *Manager) StartService(ctx context.Context, svcName string) error {
 	// 确定运行方式
 	var cmd *exec.Cmd
 	if svc.Command != "" {
-		// 直接运行命令
+		// 直接运行命令 (uvx 会 fork 子进程后退出，需要保持通信)
 		args := []string{svc.Command}
 		args = append(args, svc.Args...)
 		cmd = exec.CommandContext(ctx, args[0], args[1:]...)
@@ -139,6 +140,11 @@ func (m *Manager) StartService(ctx context.Context, svcName string) error {
 	}
 
 	cmd.Env = env
+
+	// 设置进程属性：创建新会话，防止 fork 后父进程退出导致 stdin 关闭
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -255,7 +261,18 @@ func (m *Manager) initAndServe(svcName string, port int) {
 	data, _ := json.Marshal(initReq)
 	p.Stdin.Write(append(data, '\n'))
 
-	// 短暂等待初始化
+	// 等待初始化响应
+	time.Sleep(1 * time.Second)
+
+	// 发送 notifications/initialized
+	notifReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}
+	data, _ = json.Marshal(notifReq)
+	p.Stdin.Write(append(data, '\n'))
+
+	// 再等待一下让 MCP 服务准备好
 	time.Sleep(500 * time.Millisecond)
 
 	// 分配端口
