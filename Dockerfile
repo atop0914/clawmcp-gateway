@@ -2,14 +2,10 @@
 
 FROM python:3.12-slim
 
-# 安装系统依赖和 uv
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 设置 PATH
-ENV PATH="/root/.local/bin:$PATH"
+    && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app
@@ -22,6 +18,9 @@ COPY static/ ./static/
 
 # 安装 Python 依赖
 RUN pip install --no-cache-dir aiohttp httpx pyyaml watchdog
+
+# 安装 minimax_mcp
+RUN pip install --no-cache-dir minimax-coding-plan-mcp
 
 # 暴露端口
 EXPOSE 8080

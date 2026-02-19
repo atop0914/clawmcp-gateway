@@ -20,7 +20,7 @@ import yaml
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.getenv("CLAWMCP_CONFIG", os.path.join(BASE_DIR, "configs/config.yaml"))
 PORT = int(os.getenv("CLAWMCP_PORT", "8080"))
-INTERNAL_HOST = "127.0.0.1"
+INTERNAL_HOST = "0.0.0.0"
 
 
 # ==================== 数据模型 ====================
@@ -130,7 +130,7 @@ class MCPManager:
             )
             
             # 等待启动
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
             
             # MCP 初始化
             await self._send(name, {
@@ -237,7 +237,7 @@ class MCPManager:
         })
         running.request_id += 1
         
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
         
         line = running.process.stdout.readline()
         if line:

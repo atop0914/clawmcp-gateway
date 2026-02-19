@@ -6,8 +6,8 @@ mcp:
     - name: minimax
       displayName: "MiniMax MCP"
       description: "基于 MiniMax AI 的网络搜索和图像理解服务"
-      command: "uvx"
-      args: ["minimax-coding-plan-mcp", "-y"]
+      command: "python3"
+      args: ["-m", "minimax_mcp.server"]
       env:
         - name: MINIMAX_API_KEY
           value: "sk-cp-fdYdjiaTwCC1HDP6DOezXoCJkoilqUsm7LjAFJBE2AAsblLolsc_YWkrRiyCn-hUFzGt5BPB9Hg_QgBKgu3uJgW_gj7itveRRTeisI3dX8elHhhtSnUjbTY"
