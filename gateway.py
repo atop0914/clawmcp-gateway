@@ -1,31 +1,35 @@
 """
 ClawMCP Gateway - 后端 API
+MCP 服务管理平台 - 反向代理架构
+
+架构说明:
+- Gateway: 唯一对外入口 (127.0.0.1:PORT)
+- MCP Services: 仅监听内部端口 (127.0.0.1:internal_port)
+- 外部只能通过 Gateway 访问，隐藏内部细节
+
+当前实现: HTTP 转发模式
 """
 import os
-import sys
 import json
-import asyncio
-import subprocess
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional
 from dataclasses import dataclass
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import yaml
+import httpx
 
 
 # ==================== 配置 ====================
 
-# 获取脚本所在目录
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.getenv("CLAWMCP_CONFIG", os.path.join(BASE_DIR, "configs/config.yaml"))
 PORT = int(os.getenv("CLAWMCP_PORT", "8080"))
-MCP_DEFAULT_PORT = 3001
+INTERNAL_HOST = "127.0.0.1"
 
 
 # ==================== 数据模型 ====================
@@ -35,168 +39,107 @@ class MCPService:
     name: str
     display_name: str
     description: str
-    command: str
-    args: List[str]
-    env: List[Dict[str, str]]
-    port: int
+    http_port: int  # 内部 HTTP 端口
     enabled: bool
 
 
-class ToolCallRequest(BaseModel):
-    tool: str
-    arguments: dict = {}
+# ==================== MCP 服务管理器 ====================
 
-
-# ==================== MCP 服务器 ====================
-
-class MCPServer:
-    """MCP HTTP 服务器"""
+class MCPManager:
+    """MCP 服务管理器 - 通过 HTTP 转发"""
     
-    def __init__(self, port: int = MCP_DEFAULT_PORT):
-        self.port = port
-        self.process: Optional[subprocess.Popen] = None
-        self.request_id = 2
+    def __init__(self):
+        self.services: Dict[str, MCPService] = {}
+        self.http_clients: Dict[str, httpx.AsyncClient] = {}
     
-    async def start(self, service: MCPService) -> bool:
-        if self.process and self.process.poll() is None:
-            return True
+    def load_config(self, path: str) -> None:
+        """加载服务配置"""
+        if not os.path.exists(path):
+            return
         
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        
+        for svc in data.get("mcp", {}).get("enabled", []):
+            if svc.get("enabled", True):
+                self.services[svc["name"]] = MCPService(
+                    name=svc["name"],
+                    display_name=svc.get("displayName", svc["name"]),
+                    description=svc.get("description", ""),
+                    http_port=svc.get("http_port", svc.get("port", 3001)),
+                    enabled=True
+                )
+    
+    async def check_service(self, name: str) -> bool:
+        """检查服务是否可访问"""
+        if name not in self.services:
+            return False
+        
+        svc = self.services[name]
         try:
-            env = os.environ.copy()
-            for e in service.env:
-                name = e.get("name", "")
-                value = e.get("value", "")
-                value_from = e.get("valueFrom", "")
-                
-                if value:
-                    env[name] = value
-                elif value_from and value_from.startswith("env:"):
-                    key = value_from[4:]
-                    if key in os.environ:
-                        env[name] = os.environ[key]
-            
-            cmd = [service.command] + service.args
-            self.process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=env,
-                start_new_session=True
-            )
-            
-            await asyncio.sleep(2)
-            
-            await self._send_request({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                    "clientInfo": {"name": "clawmcp-gateway", "version": "1.0"}
-                }
-            })
-            
-            await asyncio.sleep(1)
-            
-            await self._send_request({
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized"
-            })
-            
-            await asyncio.sleep(1)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Failed to start MCP: {e}")
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://{INTERNAL_HOST}:{svc.http_port}/health", timeout=3.0)
+                return resp.status_code == 200
+        except:
             return False
     
-    async def _send_request(self, data: dict) -> None:
-        if not self.process:
-            return
-        self.process.stdin.write((json.dumps(data) + "\n").encode())
-        self.process.stdin.flush()
-    
-    async def call_tool(self, tool: str, arguments: dict) -> Any:
-        if not self.process or self.process.poll() is not None:
-            raise HTTPException(status_code=400, detail="MCP not running")
+    async def call_tool(self, name: str, tool: str, arguments: dict) -> dict:
+        """调用 MCP 工具 - HTTP 转发"""
+        if name not in self.services:
+            raise HTTPException(status_code=404, detail=f"Service {name} not found")
         
-        req_id = self.request_id
-        self.request_id += 1
+        svc = self.services[name]
         
-        await self._send_request({
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "method": "tools/call",
-            "params": {"name": tool, "arguments": arguments}
-        })
-        
-        await asyncio.sleep(3)
-        
-        line = self.process.stdout.readline()
-        if line:
-            resp = json.loads(line)
-            if "result" in resp:
-                return resp["result"]
-            elif "error" in resp:
-                raise HTTPException(status_code=500, detail=str(resp["error"]))
-        
-        raise HTTPException(status_code=500, detail="No response from MCP")
+        # 转发到内部 MCP 服务
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    f"http://{INTERNAL_HOST}:{svc.http_port}/call",
+                    json={"tool": tool, "arguments": arguments}
+                )
+                
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # 解析 MCP 响应
+                    if "result" in data:
+                        return data["result"]
+                    elif "error" in data:
+                        raise HTTPException(status_code=500, detail=str(data["error"]))
+                
+                raise HTTPException(status_code=500, detail="MCP call failed")
+                
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="MCP request timeout")
+        except httpx.ConnectError:
+            raise HTTPException(status_code=400, detail=f"Service {name} not running")
     
-    async def stop(self) -> None:
-        if self.process:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except:
-                self.process.kill()
-            self.process = None
-
-
-# ==================== 配置加载 ====================
-
-def load_config(path: str) -> List[MCPService]:
-    if not os.path.exists(path):
-        return []
+    def get_status(self, name: str) -> str:
+        """获取服务状态"""
+        if name not in self.services:
+            return "unknown"
+        return "running"  # 状态由外部 MCP 服务管理
     
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    
-    services = []
-    for svc in data.get("mcp", {}).get("enabled", []):
-        services.append(MCPService(
-            name=svc.get("name", ""),
-            display_name=svc.get("displayName", svc.get("name", "")),
-            description=svc.get("description", ""),
-            command=svc.get("command", "uvx"),
-            args=svc.get("args", []),
-            env=svc.get("env", []),
-            port=svc.get("port", 3001),
-            enabled=svc.get("enabled", True)
-        ))
-    
-    return services
+    async def shutdown(self):
+        """关闭"""
+        for client in self.http_clients.values():
+            await client.aclose()
 
 
 # ==================== FastAPI 应用 ====================
 
-mcp_server = MCPServer()
-services_config: List[MCPService] = []
+mcp_manager = MCPManager()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global services_config
-    services_config = load_config(CONFIG_PATH)
+    mcp_manager.load_config(CONFIG_PATH)
     yield
-    await mcp_server.stop()
+    await mcp_manager.shutdown()
 
 
 app = FastAPI(
-    title="ClawMCP Gateway API",
-    description="MCP 服务管理平台 API",
+    title="ClawMCP Gateway",
+    description="MCP 服务管理平台 - 统一入口",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -217,27 +160,30 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 
 @app.get("/health")
 async def health():
+    """健康检查"""
     return {
         "status": "healthy",
-        "services": len(services_config),
-        "mcp_running": mcp_server.process is not None and mcp_server.process.poll() is None
+        "gateway_version": "1.0.0",
+        "services_total": len(mcp_manager.services),
+        "internal_host": INTERNAL_HOST
     }
 
 
+# ==================== 服务管理 API ====================
+
 @app.get("/api/v1/services")
 async def list_services():
+    """获取所有服务列表（隐藏内部端口细节）"""
     result = []
-    for svc in services_config:
-        status = "stopped"
-        if svc.enabled and mcp_server.process and mcp_server.process.poll() is None:
-            status = "running"
+    for name, svc in mcp_manager.services.items():
+        # 检查服务是否可达
+        is_running = await mcp_manager.check_service(name)
         
         result.append({
             "name": svc.name,
             "displayName": svc.display_name,
             "description": svc.description,
-            "status": status,
-            "port": svc.port
+            "status": "running" if is_running else "stopped"
         })
     
     return {"success": True, "data": result}
@@ -245,32 +191,59 @@ async def list_services():
 
 @app.get("/api/v1/services/{name}")
 async def get_service(name: str):
-    for svc in services_config:
-        if svc.name == name:
-            return {"success": True, "data": svc}
-    raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    """获取单个服务信息"""
+    if name not in mcp_manager.services:
+        raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    
+    svc = mcp_manager.services[name]
+    is_running = await mcp_manager.check_service(name)
+    
+    return {
+        "success": True,
+        "data": {
+            "name": svc.name,
+            "displayName": svc.display_name,
+            "description": svc.description,
+            "status": "running" if is_running else "stopped"
+        }
+    }
 
 
 @app.post("/api/v1/services/{name}/start")
 async def start_service(name: str):
-    for svc in services_config:
-        if svc.name == name:
-            success = await mcp_server.start(svc)
-            if success:
-                return {"success": True, "message": f"service {name} started"}
-            raise HTTPException(status_code=500, detail=f"Failed to start {name}")
-    raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    """启动服务 - 托管外部 MCP 服务（待实现）"""
+    if name not in mcp_manager.services:
+        raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    
+    # 当前版本：假设外部 MCP 服务已启动
+    # 后续可以实现服务生命周期管理
+    is_running = await mcp_manager.check_service(name)
+    if is_running:
+        return {"success": True, "message": f"service {name} is already running"}
+    
+    return {"success": False, "message": f"service {name} not running. Please start MCP server first."}
 
 
 @app.post("/api/v1/services/{name}/stop")
 async def stop_service(name: str):
-    await mcp_server.stop()
-    return {"success": True, "message": f"service {name} stopped"}
+    """停止服务 - 托管外部 MCP 服务（待实现）"""
+    return {"success": False, "message": "Service management not implemented yet"}
 
 
 @app.post("/api/v1/services/{name}/call")
-async def call_tool(name: str, request: ToolCallRequest):
-    result = await mcp_server.call_tool(request.tool, request.arguments)
+async def call_tool(name: str, request: Request):
+    """调用工具 - 核心转发功能"""
+    if name not in mcp_manager.services:
+        raise HTTPException(status_code=404, detail=f"Service {name} not found")
+    
+    data = await request.json()
+    tool = data.get("tool")
+    arguments = data.get("arguments", {})
+    
+    if not tool:
+        raise HTTPException(status_code=400, detail="tool is required")
+    
+    result = await mcp_manager.call_tool(name, tool, arguments)
     return {"success": True, "data": result}
 
 
@@ -285,4 +258,4 @@ async def web_ui():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host=INTERNAL_HOST, port=PORT)
