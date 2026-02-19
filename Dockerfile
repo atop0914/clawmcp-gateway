@@ -2,13 +2,13 @@
 
 FROM python:3.12-slim
 
-# 安装系统依赖
+# 安装系统依赖和 uv
 RUN apt-get update && apt-get install -y \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 安装 uv (用于运行 MCP)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# 设置 PATH
 ENV PATH="/root/.local/bin:$PATH"
 
 # 设置工作目录
