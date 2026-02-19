@@ -260,6 +260,7 @@ func (m *Manager) initAndServe(svcName string, port int) {
 
 	data, _ := json.Marshal(initReq)
 	p.Stdin.Write(append(data, '\n'))
+	p.Stdin.Flush()
 
 	// 等待初始化响应
 	time.Sleep(1 * time.Second)
@@ -271,9 +272,10 @@ func (m *Manager) initAndServe(svcName string, port int) {
 	}
 	data, _ = json.Marshal(notifReq)
 	p.Stdin.Write(append(data, '\n'))
+	p.Stdin.Flush()
 
 	// 再等待一下让 MCP 服务准备好
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
 	// 分配端口
 	if port <= 0 {
